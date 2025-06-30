@@ -16,15 +16,12 @@
 
 # Debugger Files
 *.pdb
+*.dwo
 
 # Compiled Dynamic libraries
 *.so
 *.dylib
 *.dll
-
-# Fortran module files
-*.mod
-*.smod
 
 # Compiled Static libraries
 *.lai
@@ -37,5 +34,32 @@
 *.out
 *.app
 
-# debug information files
-*.dwo
+# Build system
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+build/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*~
+*.bak
+
+# Environment file
+.env
+
+# OS and editor
+.DS_Store
+.vscode/
+.idea/
+
+# SQLite DB
+*.db
+*.sqlite
+
+# Image files (history image 저장 경로)
+images/
+snapshots/
