@@ -1,4 +1,5 @@
 #include "../include/db/DBManager.hpp"
+#include "../include/db/DBInitializer.hpp"
 #include <string>
 
 using namespace std;
@@ -8,8 +9,7 @@ int main() {
 
     if (!db.open()) return 1;
 
-    string createQuery = "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT);";
-    if (!db.execute(createQuery)) return 1;
+    DBInitializer::init(db); // 테이블 생성
 
     db.close();
     return 0;
