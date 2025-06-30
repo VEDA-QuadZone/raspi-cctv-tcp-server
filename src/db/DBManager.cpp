@@ -48,3 +48,7 @@ bool DBManager::execute(const string& query) {
     }
     return true;
 }
+
+sqlite3* DBManager::getDB() const {
+    return db_;
+}

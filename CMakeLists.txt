@@ -12,6 +12,7 @@ set(SOURCES
     src/db/DBManager.cpp
     src/db/DBInitializer.cpp
     src/db/UserRepository.cpp
+    src/db/HistoryRepository.cpp
 )
 
 # 실행 파일 생성

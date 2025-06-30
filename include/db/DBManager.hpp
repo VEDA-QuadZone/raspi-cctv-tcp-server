@@ -15,6 +15,7 @@ public:
     void close();                          // DB 닫기
     bool isOpen() const;                   // DB가 열려있는지 확인
     bool execute(const std::string& query); // SQL 쿼리 실행
+    sqlite3* getDB() const;
 
 private:
     std::string dbPath_;
