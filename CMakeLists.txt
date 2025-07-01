@@ -11,7 +11,7 @@ include_directories(
 
 # 공통 소스 (서버 & 테스트에서 공통으로 사용)
 set(COMMON_SOURCES
-    # src/server/TcpServer.cpp
+    src/server/TcpServer.cpp
     src/server/CommandHandler.cpp
     src/db/DBManager.cpp
     src/db/DBInitializer.cpp
