@@ -4,6 +4,7 @@
 #include <unistd.h>      // close()
 #include <cstring>       // memset
 #include <arpa/inet.h>   // htons, inet_ntoa
+#include <sstream>       // istringstream 사용을 위해
 
 TcpServer::TcpServer() : server_fd(-1), fd_max(0) {
     FD_ZERO(&master_fds);
@@ -106,9 +107,22 @@ void TcpServer::handleClient(int client_fd) {
     }
 
     std::string command(buffer);
-    std::cout << "[TcpServer] Received: " << command;
+    std::istringstream iss(command);
+    std::string keyword;
+    iss >> keyword;
 
-    // TODO: 명령어 분기 처리 (ex: REGISTER, LOGIN 등)
+    std::cout << "[TcpServer] Received command: " << keyword << std::endl;
+
+    if (keyword == "HELLO") {
+        std::string response = "Hi from server!\n";
+        send(client_fd, response.c_str(), response.size(), 0);
+    } else if (keyword == "PING") {
+        std::string response = "PONG\n";
+        send(client_fd, response.c_str(), response.size(), 0);
+    } else {
+        std::string response = "Unknown command\n";
+        send(client_fd, response.c_str(), response.size(), 0);
+    }
 }
 
 void TcpServer::removeClient(int client_fd) {
