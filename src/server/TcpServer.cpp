@@ -1,10 +1,13 @@
 #include "../../include/server/TcpServer.hpp"
+#include "../../include/server/CommandHandler.hpp"
 
 #include <iostream>
 #include <unistd.h>      // close()
 #include <cstring>       // memset
 #include <arpa/inet.h>   // htons, inet_ntoa
 #include <sstream>       // istringstream 사용을 위해
+
+extern CommandHandler* commandHandler; // CommandHandler 인스턴스
 
 TcpServer::TcpServer() : server_fd(-1), fd_max(0) {
     FD_ZERO(&master_fds);
@@ -106,23 +109,14 @@ void TcpServer::handleClient(int client_fd) {
         return;
     }
 
-    std::string command(buffer);
-    std::istringstream iss(command);
-    std::string keyword;
-    iss >> keyword;
+    std::string commandStr(buffer);
+    std::cout << "[TcpServer] Received command: " << commandStr;
 
-    std::cout << "[TcpServer] Received command: " << keyword << std::endl;
+    // 명령어 처리: CommandHandler 통해 응답 생성
+    std::string response = commandHandler->handle(commandStr);
 
-    if (keyword == "HELLO") {
-        std::string response = "Hi from server!\n";
-        send(client_fd, response.c_str(), response.size(), 0);
-    } else if (keyword == "PING") {
-        std::string response = "PONG\n";
-        send(client_fd, response.c_str(), response.size(), 0);
-    } else {
-        std::string response = "Unknown command\n";
-        send(client_fd, response.c_str(), response.size(), 0);
-    }
+    // 응답 전송
+    send(client_fd, response.c_str(), response.size(), 0);
 }
 
 void TcpServer::removeClient(int client_fd) {
