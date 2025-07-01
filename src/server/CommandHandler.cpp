@@ -147,3 +147,23 @@ std::string CommandHandler::handleResetPassword(const std::string& payload) {
     // 비밀번호 업데이트 성공
     return R"({"status": "success", "code": 200, "message": "Password reset successful"})";
 }
+
+std::string CommandHandler::handleGetHistory(const std::string&) {
+    return R"({"status": "error", "code": 501, "message": "Not Implemented"})";
+}
+
+std::string CommandHandler::handleGetHistoryByEventType(const std::string&) {
+    return R"({"status": "error", "code": 501, "message": "Not Implemented"})";
+}
+
+std::string CommandHandler::handleGetHistoryByDateRange(const std::string&) {
+    return R"({"status": "error", "code": 501, "message": "Not Implemented"})";
+}
+
+std::string CommandHandler::handleGetHistoryByEventTypeAndDateRange(const std::string&) {
+    return R"({"status": "error", "code": 501, "message": "Not Implemented"})";
+}
+
+std::string CommandHandler::handleGetImage(const std::string&) {
+    return R"({"status": "error", "code": 501, "message": "Not Implemented"})";
+}
