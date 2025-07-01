@@ -13,6 +13,7 @@ set(SOURCES
     src/db/DBInitializer.cpp
     src/db/UserRepository.cpp
     src/db/HistoryRepository.cpp
+    src/server/TcpServer.cpp
 )
 
 # 실행 파일 생성
@@ -21,3 +22,16 @@ add_executable(server ${SOURCES})
 # SQLite3 라이브러리 링크
 find_package(SQLite3 REQUIRED)
 target_link_libraries(server SQLite::SQLite3)
+
+# 테스트용 실행 파일
+set(SOURCES_TEST
+    test/test_tcpserver.cpp
+    src/server/TcpServer.cpp
+    src/db/DBManager.cpp
+    src/db/DBInitializer.cpp
+    src/db/UserRepository.cpp
+    src/db/HistoryRepository.cpp
+)
+
+add_executable(tcpserver-test ${SOURCES_TEST})
+target_link_libraries(tcpserver-test SQLite::SQLite3)
