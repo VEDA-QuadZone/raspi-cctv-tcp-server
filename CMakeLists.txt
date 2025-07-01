@@ -4,20 +4,38 @@ project(raspi-cctv-server)
 set(CMAKE_CXX_STANDARD 17)
 
 # include 디렉토리 추가
-include_directories(include)
+include_directories(
+    include
+    include/lib
+)
 
-# 소스 파일 목록
-set(SOURCES
-    src/main.cpp
+# 공통 소스 (서버 & 테스트에서 공통으로 사용)
+set(COMMON_SOURCES
+    src/server/TcpServer.cpp
+    src/server/CommandHandler.cpp
     src/db/DBManager.cpp
     src/db/DBInitializer.cpp
     src/db/UserRepository.cpp
     src/db/HistoryRepository.cpp
 )
 
-# 실행 파일 생성
-add_executable(server ${SOURCES})
+# 메인 실행 파일 (server)
+add_executable(server
+    src/main.cpp
+    ${COMMON_SOURCES}
+)
 
-# SQLite3 라이브러리 링크
+# SQLite3, OpenSSL 찾기
 find_package(SQLite3 REQUIRED)
-target_link_libraries(server SQLite::SQLite3)
+find_package(OpenSSL REQUIRED)
+
+# 링크 라이브러리
+target_link_libraries(server SQLite::SQLite3 OpenSSL::SSL)
+
+# 테스트 실행 파일 (tcpserver-test)
+add_executable(tcpserver-test
+    test/test_CommandHandler.cpp
+    ${COMMON_SOURCES}
+)
+
+target_link_libraries(tcpserver-test SQLite::SQLite3 OpenSSL::SSL)
