@@ -4,6 +4,7 @@
 #include <sstream>
 #include <iomanip>
 #include <optional>
+#include <filesystem> // 파일 경로 처리를 위해
 
 CommandHandler::CommandHandler(sqlite3* db)
     : userRepo(db), historyRepo(db) {}
@@ -148,22 +149,232 @@ std::string CommandHandler::handleResetPassword(const std::string& payload) {
     return R"({"status": "success", "code": 200, "message": "Password reset successful"})";
 }
 
-std::string CommandHandler::handleGetHistory(const std::string&) {
-    return R"({"status": "error", "code": 501, "message": "Not Implemented"})";
+std::string CommandHandler::handleGetHistory(const std::string& payload) {
+    std::istringstream iss(payload);
+    std::string email;
+    int limit = 10; // 기본값
+    int offset = 0; // 기본값
+
+    iss >> email >> limit >> offset;
+
+    if (email.empty() || limit <= 0 || offset < 0) { // 이메일이 비어있거나 limit, offset이 유효하지 않은 경우
+        return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
+    }
+
+    auto userOpt = userRepo.getUserByEmail(email);
+    if (!userOpt.has_value()) { // 사용자가 존재하지 않는 경우
+        return R"({"status": "error", "code": 404, "message": "User not found"})";
+    }
+
+    // 사용자의 히스토리 가져오기
+    auto history = historyRepo.getHistories(limit, offset);
+
+    if (history.empty()) { // 히스토리가 없는 경우
+        nlohmann::json response = {
+            {"status", "success"},
+            {"code", 200},
+            {"message", "No history found"},
+            {"data", nlohmann::json::array()}
+        };
+        return response.dump();
+    }
+
+    nlohmann::json data = nlohmann::json::array(); // JSON 배열 생성
+    for (const auto& h : history) {
+        data.push_back({
+            {"id", h.id},
+            {"date", h.date},
+            {"image_path", h.imagePath},
+            {"plate_number", h.plateNumber},
+            {"event_type", h.eventType}
+        });
+    }
+
+    nlohmann::json response = {
+        {"status", "success"},
+        {"code", 200},
+        {"message", "History retrieved successfully"},
+        {"data", data}
+    };
+    return response.dump();
 }
 
-std::string CommandHandler::handleGetHistoryByEventType(const std::string&) {
-    return R"({"status": "error", "code": 501, "message": "Not Implemented"})";
+std::string CommandHandler::handleGetHistoryByEventType(const std::string& payload) {
+    std::istringstream iss(payload);
+    std::string email;
+    int eventType = 0;
+    int limit = 10; // 기본값
+    int offset = 0; // 기본값
+
+    iss >> email >> eventType >> limit >> offset;
+
+    if (email.empty() || eventType < 0 || limit <= 0 || offset < 0) { 
+        return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
+    }
+
+    auto userOpt = userRepo.getUserByEmail(email);
+    if (!userOpt.has_value()) {
+        return R"({"status": "error", "code": 404, "message": "User not found"})";
+    }
+
+    // 이벤트 타입에 따른 히스토리 가져오기
+    auto history = historyRepo.getHistoriesByEventType(eventType, limit, offset);
+    if (history.empty()) { // 히스토리가 없는 경우
+        nlohmann::json response = {
+            {"status", "success"},
+            {"code", 200},
+            {"message", "No history found"},
+            {"data", nlohmann::json::array()}
+        };
+        return response.dump();
+    }
+
+    nlohmann::json data = nlohmann::json::array(); // JSON 배열 생성
+    for (const auto& h : history) {
+        data.push_back({
+            {"id", h.id},
+            {"date", h.date},
+            {"image_path", h.imagePath},
+            {"plate_number", h.plateNumber},
+            {"event_type", h.eventType}
+        });
+    }
+
+    nlohmann::json response = {
+        {"status", "success"},
+        {"code", 200},
+        {"message", "History retrieved successfully"},
+        {"data", data}
+    };
+    return response.dump();
 }
 
-std::string CommandHandler::handleGetHistoryByDateRange(const std::string&) {
-    return R"({"status": "error", "code": 501, "message": "Not Implemented"})";
+std::string CommandHandler::handleGetHistoryByDateRange(const std::string& payload) {
+    std::istringstream iss(payload);
+    std::string email, startDateRaw, endDateRaw;
+    int limit = 10;
+    int offset = 0;
+
+    iss >> email >> startDateRaw >> endDateRaw >> limit >> offset;
+
+    std::string startDate = startDateRaw + " 00:00:00";
+    std::string endDate = endDateRaw + " 23:59:59";
+
+    if (email.empty() || startDateRaw.empty() || endDateRaw.empty() || limit <= 0 || offset < 0) {
+        return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
+    }
+
+    auto userOpt = userRepo.getUserByEmail(email);
+    if (!userOpt.has_value()) {
+        return R"({"status": "error", "code": 404, "message": "User not found"})";
+    }
+
+    auto histories = historyRepo.getHistoriesByDateRange(startDate, endDate, limit, offset);
+
+    if (histories.empty()) {
+        nlohmann::json response = {
+            {"status", "success"},
+            {"code", 200},
+            {"message", "No history found"},
+            {"data", nlohmann::json::array()}
+        };
+        return response.dump();
+    }
+
+    nlohmann::json data = nlohmann::json::array();
+    for (const auto& h : histories) {
+        data.push_back({
+            {"id", h.id},
+            {"date", h.date},
+            {"image_path", h.imagePath},
+            {"plate_number", h.plateNumber},
+            {"event_type", h.eventType}
+        });
+    }
+
+    nlohmann::json response = {
+        {"status", "success"},
+        {"code", 200},
+        {"message", "History retrieved successfully"},
+        {"data", data}
+    };
+
+    return response.dump();
 }
 
-std::string CommandHandler::handleGetHistoryByEventTypeAndDateRange(const std::string&) {
-    return R"({"status": "error", "code": 501, "message": "Not Implemented"})";
+
+std::string CommandHandler::handleGetHistoryByEventTypeAndDateRange(const std::string& payload) {
+    std::istringstream iss(payload);
+    std::string email, startDateRaw, endDateRaw;
+    int eventType = 0;
+    int limit = 10;
+    int offset = 0;
+
+    iss >> email >> eventType >> startDateRaw >> endDateRaw >> limit >> offset;
+
+    std::string startDate = startDateRaw + " 00:00:00";
+    std::string endDate = endDateRaw + " 23:59:59";
+
+    if (email.empty() || startDateRaw.empty() || endDateRaw.empty() || eventType < 0 || limit <= 0 || offset < 0) {
+        return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
+    }
+
+    auto userOpt = userRepo.getUserByEmail(email);
+    if (!userOpt.has_value()) {
+        return R"({"status": "error", "code": 404, "message": "User not found"})";
+    }
+
+    auto histories = historyRepo.getHistoriesByEventTypeAndDateRange(eventType, startDate, endDate, limit, offset);
+
+    if (histories.empty()) {
+        nlohmann::json response = {
+            {"status", "success"},
+            {"code", 200},
+            {"message", "No history found"},
+            {"data", nlohmann::json::array()}
+        };
+        return response.dump();
+    }
+
+    nlohmann::json data = nlohmann::json::array();
+    for (const auto& h : histories) {
+        data.push_back({
+            {"id", h.id},
+            {"date", h.date},
+            {"image_path", h.imagePath},
+            {"plate_number", h.plateNumber},
+            {"event_type", h.eventType}
+        });
+    }
+
+    nlohmann::json response = {
+        {"status", "success"},
+        {"code", 200},
+        {"message", "History retrieved successfully"},
+        {"data", data}
+    };
+
+    return response.dump();
 }
 
-std::string CommandHandler::handleGetImage(const std::string&) {
-    return R"({"status": "error", "code": 501, "message": "Not Implemented"})";
+std::string CommandHandler::handleGetImage(const std::string& payload) {
+    std::string imagePath = payload;
+
+    if (imagePath.empty()) {
+        return R"({"status": "error", "code": 400, "message": "Image path is missing"})";
+    }
+
+    // 실제 파일이 존재하는지 확인
+    if (!std::filesystem::exists(imagePath)) {
+        return R"({"status": "error", "code": 404, "message": "Image not found"})";
+    }
+
+    nlohmann::json response = {
+        {"status", "success"},
+        {"code", 200},
+        {"message", "Image path resolved successfully"},
+        {"image_path", imagePath}
+    };
+
+    return response.dump();
 }
