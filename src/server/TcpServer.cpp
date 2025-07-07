@@ -9,7 +9,7 @@
 
 extern CommandHandler* commandHandler; // CommandHandler 인스턴스
 
-TcpServer::TcpServer() : server_fd(-1), fd_max(0) {
+TcpServer::TcpServer(sqlite3* db) : server_fd(-1), fd_max(0), commandHandler(db) {
     FD_ZERO(&master_fds);
 }
 
@@ -110,13 +110,16 @@ void TcpServer::handleClient(int client_fd) {
     }
 
     std::string commandStr(buffer);
-    std::cout << "[TcpServer] Received command: " << commandStr;
+    std::cout << "[TcpServer] Received command: " << commandStr << std::endl;
 
     // 명령어 처리: CommandHandler 통해 응답 생성
-    std::string response = commandHandler->handle(commandStr);
+    std::string response = commandHandler.handle(commandStr, client_fd);
 
     // 응답 전송
     send(client_fd, response.c_str(), response.size(), 0);
+
+    // 디버그 출력
+    std::cout << "[TcpServer] Sent response to fd=" << client_fd << ": " << response << std::endl;
 }
 
 void TcpServer::removeClient(int client_fd) {

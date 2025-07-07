@@ -5,11 +5,15 @@
 #include <iomanip>
 #include <optional>
 #include <filesystem> // 파일 경로 처리를 위해
+#include <sys/socket.h> // send() 함수 사용을 위해
+#include <fstream> // 파일 읽기를 위해
+#include <iostream>
+#include <arpa/inet.h>
 
 CommandHandler::CommandHandler(sqlite3* db)
     : userRepo(db), historyRepo(db) {}
 
-std::string CommandHandler::handle(const std::string& commandStr) {
+std::string CommandHandler::handle(const std::string& commandStr, int client_fd) {
     std::istringstream iss(commandStr);
     std::string command;
     std::getline(iss, command, ' ');
@@ -31,7 +35,8 @@ std::string CommandHandler::handle(const std::string& commandStr) {
     } else if (command == "GET_HISTORY_BY_EVENT_TYPE_AND_DATE_RANGE") {
         return handleGetHistoryByEventTypeAndDateRange(payload);
     } else if (command == "GET_IMAGE") {
-        return handleGetImage(payload);
+        handleGetImage(client_fd, payload); // client_fd을 전달
+        return ""; // 이미지 전송 후 별도의 응답 문자열 반환 없음
     } else {
         return R"({"status": "error", "code": 400, "message": "Unknown command"})";
     }
@@ -357,24 +362,51 @@ std::string CommandHandler::handleGetHistoryByEventTypeAndDateRange(const std::s
     return response.dump();
 }
 
-std::string CommandHandler::handleGetImage(const std::string& payload) {
-    std::string imagePath = payload;
+bool CommandHandler::handleGetImage(int client_fd, const std::string& payload) {
+    std::string baseDir = "./images/";
+    std::string fullPath = baseDir + payload;
 
-    if (imagePath.empty()) {
-        return R"({"status": "error", "code": 400, "message": "Image path is missing"})";
+    if (payload.empty() || !std::filesystem::exists(fullPath)) {
+        std::string errorMsg = R"({"status": "error", "code": 404, "message": "Image not found"})";
+        send(client_fd, errorMsg.c_str(), errorMsg.size(), 0);
+        return false;
     }
 
-    // 실제 파일이 존재하는지 확인
-    if (!std::filesystem::exists(imagePath)) {
-        return R"({"status": "error", "code": 404, "message": "Image not found"})";
+    std::ifstream file(fullPath, std::ios::binary | std::ios::ate);  // ✅ 경로 수정
+    if (!file.is_open()) {
+        std::string errorMsg = R"({"status": "error", "code": 500, "message": "Failed to open image file"})";
+        send(client_fd, errorMsg.c_str(), errorMsg.size(), 0);
+        return false;
     }
 
-    nlohmann::json response = {
-        {"status", "success"},
-        {"code", 200},
-        {"message", "Image path resolved successfully"},
-        {"image_path", imagePath}
-    };
+    std::streamsize fileSize = file.tellg();
+    if (fileSize <= 0 || fileSize > UINT32_MAX) {
+        std::cerr << "[Server] Invalid file size.\n";
+        return false;
+    }
 
-    return response.dump();
+    file.seekg(0, std::ios::beg);
+
+    uint32_t imageSize = static_cast<uint32_t>(fileSize);
+    uint32_t imageSizeNet = htonl(imageSize);
+    if (send(client_fd, &imageSizeNet, sizeof(imageSizeNet), 0) == -1) {
+        std::cerr << "[Server] Failed to send image size\n";
+        return false;
+    }
+
+    char buffer[4096];
+    while (!file.eof()) {
+        file.read(buffer, sizeof(buffer));
+        std::streamsize bytesRead = file.gcount();
+        if (bytesRead > 0) {
+            if (send(client_fd, buffer, bytesRead, 0) == -1) {
+                std::cerr << "[Server] Failed to send image data\n";
+                return false;
+            }
+        }
+    }
+
+    file.close();
+    std::cout << "[Server] Image sent successfully.\n";
+    return true;
 }

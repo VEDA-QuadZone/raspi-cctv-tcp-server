@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(raspi-cctv-server)
+project(raspi-cctv-tcp-server)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -34,7 +34,7 @@ target_link_libraries(server SQLite::SQLite3 OpenSSL::SSL)
 
 # 테스트 실행 파일 (tcpserver-test)
 add_executable(tcpserver-test
-    test/test_CommandHandler.cpp
+    test/test_image_processing.cpp
     ${COMMON_SOURCES}
 )
 

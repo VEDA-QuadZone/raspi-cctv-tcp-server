@@ -6,10 +6,12 @@
 #include <set>
 #include <string>
 #include <sys/select.h>
+#include <sqlite3.h>  
+#include "./CommandHandler.hpp"
 
 class TcpServer {
 public:
-    TcpServer();
+    TcpServer(sqlite3* db);
     ~TcpServer();
 
     void setupSocket(int port);
@@ -19,8 +21,9 @@ private:
     int server_fd;
     int fd_max;
     fd_set master_fds;
-
     std::set<int> client_fds;
+
+    CommandHandler commandHandler;
 
     void acceptClient();
     void handleClient(int client_fd);
