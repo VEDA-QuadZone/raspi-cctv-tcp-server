@@ -24,6 +24,8 @@ std::string CommandHandler::handle(const std::string& commandStr) {
         return handleResetPassword(payload);
     } else if (command == "GET_HISTORY") {
         return handleGetHistory(payload);
+    } else if (command == "ADD_HISTORY") {
+        return handleAddHistory(payload);
     } else if (command == "GET_HISTORY_BY_EVENT_TYPE") {
         return handleGetHistoryByEventType(payload);
     } else if (command == "GET_HISTORY_BY_DATE_RANGE") {
@@ -198,6 +200,35 @@ std::string CommandHandler::handleGetHistory(const std::string& payload) {
     };
     return response.dump();
 }
+
+std::string CommandHandler::handleAddHistory(const std::string& payload) {
+    std::istringstream iss(payload);
+    std::string rawDate, imagePath, plateNumber;
+    int eventType;
+
+    iss >> rawDate >> imagePath >> plateNumber >> eventType;
+
+    if (rawDate.empty() || imagePath.empty() || plateNumber.empty() || eventType < 0 || eventType > 2) {
+        return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
+    }
+
+    // 날짜 형식 변경: YYYY-MM-DD_HH:MM:SS → YYYY-MM-DD HH:MM:SS
+    std::replace(rawDate.begin(), rawDate.end(), '_', ' ');
+
+    History newHistory;
+    newHistory.date = rawDate;
+    newHistory.imagePath = imagePath;
+    newHistory.plateNumber = plateNumber;
+    newHistory.eventType = eventType;
+
+    if (!historyRepo.createHistory(newHistory)) {
+        return R"({"status": "error", "code": 500, "message": "Failed to create history"})";
+    }
+
+    return R"({"status": "success", "code": 200, "message": "History created successfully"})";
+}
+
+
 
 std::string CommandHandler::handleGetHistoryByEventType(const std::string& payload) {
     std::istringstream iss(payload);
