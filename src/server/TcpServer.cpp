@@ -134,6 +134,19 @@ void TcpServer::handleClient(int client_fd) {
         std::string result = imageHandler->handleImageUpload(client_fd, filename, filesize);
         send(client_fd, result.c_str(), result.size(), 0);
         return;
+    } else if (commandStr.rfind("GET_IMAGE", 0) == 0 && imageHandler != nullptr) {
+        std::istringstream iss(commandStr);
+        std::string cmd, imagePath;
+        iss >> cmd >> imagePath;
+
+        if (imagePath.empty()) {
+            std::string error = R"({"status": "error", "code": 400, "message": "Missing image path"})";
+            send(client_fd, error.c_str(), error.size(), 0);
+            return;
+        }
+
+        imageHandler->handleGetImage(client_fd, imagePath); // 이미지 요청 처리
+        return;
     }
     
     // 기본 명령어 처리: CommandHandler 통해 응답 생성
