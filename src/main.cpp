@@ -1,5 +1,6 @@
 #include "../../include/server/TcpServer.hpp"
 #include "../../include/server/CommandHandler.hpp"
+#include "../../include/server/ImageHandler.hpp"
 #include "../../include/db/DBManager.hpp"
 #include "../../include/db/DBInitializer.hpp"
 
@@ -19,12 +20,16 @@ int main() {
     // 2. 테이블 생성
     DBInitializer::init(db);
 
-    // 3. CommandHandler 인스턴스 생성 및 전역 포인터 설정
+    // 3-1. CommandHandler 인스턴스 생성 및 전역 포인터 설정
     CommandHandler handler(db.getDB());
     commandHandler = &handler;
 
+    // 3-2. ImageHandler 인스턴스 생성
+    ImageHandler imageHandler(db.getDB()); 
+
     // 4. TcpServer 실행
     TcpServer server;
+    server.setImageHandler(&imageHandler);  // ImageHandler 설정
     server.setupSocket(8080);  // 원하는 포트 번호
     server.start();
 
