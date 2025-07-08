@@ -17,14 +17,19 @@ private:
     UserRepository userRepo;
     HistoryRepository historyRepo;
 
-    // 명령어별 처리 함수
+    // 사용자 관련 명령어
     std::string handleRegister(const std::string& payload);
     std::string handleLogin(const std::string& payload);
     std::string handleResetPassword(const std::string& payload);
+
+    // 히스토리 관련 명령어
     std::string handleGetHistory(const std::string& payload);
+    std::string handleAddHistory(const std::string& payload); 
     std::string handleGetHistoryByEventType(const std::string& payload);
     std::string handleGetHistoryByDateRange(const std::string& payload);
     std::string handleGetHistoryByEventTypeAndDateRange(const std::string& payload);
+
+    // 이미지 관련 명령어
     std::string handleGetImage(const std::string& payload); // 이미지 경로 요청
 
     // 유틸 함수: JSON 파싱, 응답 생성 등
