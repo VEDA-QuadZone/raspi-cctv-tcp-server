@@ -5,6 +5,9 @@
 #include <vector>
 #include <iostream>
 #include <chrono>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <unistd.h> // read, write
 
 ImageHandler::ImageHandler(sqlite3* db) : db(db) {}
 
@@ -67,4 +70,24 @@ std::string ImageHandler::handleImageUpload(int client_fd, const std::string& fi
     // 6. 성공 응답 (업로드된 파일 경로를 같이 전달)
     std::string successJson = R"({"status": "success", "code": 200, "message": "Image uploaded successfully", "path": ")" + fullPath + R"("})";
     return successJson;
+}
+
+void ImageHandler::handleGetImage(int client_fd, const std::string& imagePath) {
+    std::ifstream file(imagePath, std::ios::binary);
+    if (!file.is_open()) {
+        std::string errorMsg = R"({"status": "error", "code": 404, "message": "Image not found"})";
+        send(client_fd, errorMsg.c_str(), errorMsg.size(), 0);
+        return;
+    }
+
+    char buffer[4096];
+    while (!file.eof()) {
+        file.read(buffer, sizeof(buffer));
+        std::streamsize bytesRead = file.gcount();
+        if (bytesRead > 0) {
+            send(client_fd, buffer, bytesRead, 0);
+        }
+    }
+
+    file.close();
 }
