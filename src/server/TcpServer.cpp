@@ -1,5 +1,6 @@
 #include "../../include/server/TcpServer.hpp"
 #include "../../include/server/CommandHandler.hpp"
+#include "../../include/server/ImageHandler.hpp"
 
 #include <iostream>
 #include <unistd.h>      // close()
@@ -20,6 +21,10 @@ TcpServer::~TcpServer() {
     for (int client_fd : client_fds) {
         close(client_fd);
     }
+}
+
+void TcpServer::setImageHandler(ImageHandler* handler) {
+    this->imageHandler = handler;
 }
 
 void TcpServer::setupSocket(int port) {
@@ -56,6 +61,7 @@ void TcpServer::setupSocket(int port) {
 }
 
 void TcpServer::start() {
+
     while (true) {
         fd_set read_fds = master_fds;
 
@@ -112,7 +118,25 @@ void TcpServer::handleClient(int client_fd) {
     std::string commandStr(buffer);
     std::cout << "[TcpServer] Received command: " << commandStr;
 
-    // 명령어 처리: CommandHandler 통해 응답 생성
+    // UPLOAD 명령어 분기 처리
+    if (commandStr.rfind("UPLOAD", 0) == 0 && imageHandler != nullptr) {
+        std::istringstream iss(commandStr);
+        std::string cmd, filename;
+        size_t filesize;
+        iss >> cmd >> filename >> filesize;
+
+        if (filename.empty() || filesize == 0) {
+            std::string error = R"({"status": "error", "code": 400, "message": "Invalid filename or filesize"})";
+            send(client_fd, error.c_str(), error.size(), 0);
+            return;
+        }
+
+        std::string result = imageHandler->handleImageUpload(client_fd, filename, filesize);
+        send(client_fd, result.c_str(), result.size(), 0);
+        return;
+    }
+    
+    // 기본 명령어 처리: CommandHandler 통해 응답 생성
     std::string response = commandHandler->handle(commandStr);
 
     // 응답 전송

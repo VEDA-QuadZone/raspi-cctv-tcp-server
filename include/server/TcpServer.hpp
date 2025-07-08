@@ -7,6 +7,7 @@
 #include <string>
 #include <sys/select.h>
 
+class ImageHandler;  
 class TcpServer {
 public:
     TcpServer();
@@ -14,6 +15,7 @@ public:
 
     void setupSocket(int port);
     void start();
+    void setImageHandler(ImageHandler* handler); 
 
 private:
     int server_fd;
@@ -25,6 +27,8 @@ private:
     void acceptClient();
     void handleClient(int client_fd);
     void removeClient(int client_fd);
+    
+    ImageHandler* imageHandler = nullptr;
 };
 
 #endif // TCPSERVER_HPP

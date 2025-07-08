@@ -13,6 +13,7 @@ include_directories(
 set(COMMON_SOURCES
     src/server/TcpServer.cpp
     src/server/CommandHandler.cpp
+    src/server/ImageHandler.cpp
     src/db/DBManager.cpp
     src/db/DBInitializer.cpp
     src/db/UserRepository.cpp
@@ -39,3 +40,5 @@ add_executable(tcpserver-test
 )
 
 target_link_libraries(tcpserver-test SQLite::SQLite3 OpenSSL::SSL)
+
+
