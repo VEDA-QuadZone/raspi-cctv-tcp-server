@@ -18,6 +18,7 @@ set(COMMON_SOURCES
     src/db/DBInitializer.cpp
     src/db/UserRepository.cpp
     src/db/HistoryRepository.cpp
+    src/util/EndianUtils.cpp
 )
 
 # 메인 실행 파일 (server)

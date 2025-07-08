@@ -9,6 +9,9 @@
 #include <sys/socket.h>
 #include <unistd.h> // read, write
 
+#include "../../include/util/EndianUtils.hpp" // htonll, ntohll
+
+
 ImageHandler::ImageHandler(sqlite3* db) : db(db) {}
 
 std::string ImageHandler::handleImageUpload(int client_fd, const std::string& filename, size_t filesize) {
@@ -79,6 +82,15 @@ void ImageHandler::handleGetImage(int client_fd, const std::string& imagePath) {
         send(client_fd, errorMsg.c_str(), errorMsg.size(), 0);
         return;
     }
+
+    // 파일 크기 계산
+    file.seekg(0, std::ios::end);
+    size_t fileSize = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    // 바이트 오더 변환
+    uint64_t netFileSize = htonll(fileSize);
+    send(client_fd, &netFileSize, sizeof(netFileSize), 0);
 
     char buffer[4096];
     while (!file.eof()) {
