@@ -34,6 +34,7 @@ private:
 
     // 유틸 함수: JSON 파싱, 응답 생성 등
     std::string handleChangeFrame(const std::string& payload);
+    std::string handleGetFrame(const std::string& payload);
 };
 
 #endif // COMMAND_HANDLER_HPP

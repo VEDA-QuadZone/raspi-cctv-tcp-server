@@ -5,7 +5,7 @@ HistoryRepository::HistoryRepository(sqlite3* db) : db(db) {}
 
 // 히스토리 생성
 bool HistoryRepository::createHistory(const History& history) {
-    const char* sql = "INSERT INTO history (date, image_path, plate_number, event_type) VALUES (?, ?, ?, ?)";
+    const char* sql = "INSERT INTO history (date, image_path, plate_number, event_type, start_snapshot, end_snapshot, speed) VALUES (?, ?, ?, ?, ?, ?, ?)";
     sqlite3_stmt* stmt;
     
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr);
@@ -18,7 +18,12 @@ bool HistoryRepository::createHistory(const History& history) {
     sqlite3_bind_text(stmt, 2, history.imagePath.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, history.plateNumber.c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_int(stmt, 4, history.eventType);
-
+    sqlite3_bind_text(stmt, 5, history.startSnapshot.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, history.endSnapshot.c_str(), -1, SQLITE_TRANSIENT);
+    if(history.speed.has_value())
+        sqlite3_bind_double(stmt, 7, history.speed.value());
+    else
+        sqlite3_bind_null(stmt, 7);
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE) {
         std::cerr << "Failed to execute INSERT: " << sqlite3_errmsg(db) << std::endl;
@@ -33,7 +38,7 @@ bool HistoryRepository::createHistory(const History& history) {
 // 페이지네이션 적용 전체 조회
 std::vector<History> HistoryRepository::getHistories(int limit, int offset) {
     std::vector<History> histories;
-    const char* sql = "SELECT id, date, image_path, plate_number, event_type FROM history ORDER BY date DESC LIMIT ? OFFSET ?;";
+    const char* sql = "SELECT id, date, image_path, plate_number, event_type, start_snapshot, end_snapshot, speed FROM history ORDER BY date DESC LIMIT ? OFFSET ?;";
     sqlite3_stmt* stmt;
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -50,7 +55,12 @@ std::vector<History> HistoryRepository::getHistories(int limit, int offset) {
         history.imagePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
         history.plateNumber = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
         history.eventType = sqlite3_column_int(stmt, 4);
-
+        history.startSnapshot = sqlite3_column_text(stmt, 5) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) : "";
+        history.endSnapshot = sqlite3_column_text(stmt, 6) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)) : "";
+        if (sqlite3_column_type(stmt, 7) != SQLITE_NULL)
+            history.speed = static_cast<float>(sqlite3_column_double(stmt, 7));
+        else
+            history.speed = std::nullopt;
         histories.push_back(history);
     }
 
@@ -58,12 +68,12 @@ std::vector<History> HistoryRepository::getHistories(int limit, int offset) {
     return histories;
 }
 
-// 이벤트 유형 필터 + 페이지네이션
 std::vector<History> HistoryRepository::getHistoriesByEventType(int eventType, int limit, int offset) {
     std::vector<History> histories;
-    const char* sql = "SELECT id, date, image_path, plate_number, event_type "
-                      "FROM history WHERE event_type = ? "
-                      "ORDER BY date DESC LIMIT ? OFFSET ?;";
+    const char* sql =
+        "SELECT id, date, image_path, plate_number, event_type, start_snapshot, end_snapshot, speed "
+        "FROM history WHERE event_type = ? "
+        "ORDER BY date DESC LIMIT ? OFFSET ?;";
     sqlite3_stmt* stmt;
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -81,6 +91,28 @@ std::vector<History> HistoryRepository::getHistoriesByEventType(int eventType, i
         history.imagePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
         history.plateNumber = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
         history.eventType = sqlite3_column_int(stmt, 4);
+        history.startSnapshot = sqlite3_column_text(stmt, 5) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) : "";
+        history.endSnapshot = sqlite3_column_text(stmt, 6) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)) : "";
+
+        if (sqlite3_column_type(stmt, 7) != SQLITE_NULL)
+            history.speed = static_cast<float>(sqlite3_column_double(stmt, 7));
+        else
+            history.speed = std::nullopt;
+
+        // [필수] 이벤트 타입별로 필요 없는 필드는 빈값/NULL로 명확히!
+        if (history.eventType == 1) {
+            // 과속: speed만 사용, start/end snapshot은 사용하지 않음
+            history.startSnapshot = "";
+            history.endSnapshot = "";
+        } else if (history.eventType == 0) {
+            // 불법주정차: start/end snapshot만 사용, speed는 무시
+            history.speed = std::nullopt;
+        } else {
+            // 기타 이벤트: 모두 무시
+            history.startSnapshot = "";
+            history.endSnapshot = "";
+            history.speed = std::nullopt;
+        }
 
         histories.push_back(history);
     }
@@ -89,7 +121,7 @@ std::vector<History> HistoryRepository::getHistoriesByEventType(int eventType, i
     return histories;
 }
 
-// 날짜 범위 필터 + 페이지네이션
+
 std::vector<History> HistoryRepository::getHistoriesByDateRange(
     const std::string& startDate,
     const std::string& endDate,
@@ -98,11 +130,11 @@ std::vector<History> HistoryRepository::getHistoriesByDateRange(
 ) {
     std::vector<History> histories;
     const char* sql =
-        "SELECT id, date, image_path, plate_number, event_type "
+        "SELECT id, date, image_path, plate_number, event_type, start_snapshot, end_snapshot, speed "
         "FROM history "
         "WHERE date BETWEEN ? AND ? "
         "ORDER BY date DESC LIMIT ? OFFSET ?;";
-    
+
     sqlite3_stmt* stmt;
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -121,6 +153,27 @@ std::vector<History> HistoryRepository::getHistoriesByDateRange(
         history.imagePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
         history.plateNumber = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
         history.eventType = sqlite3_column_int(stmt, 4);
+        history.startSnapshot = sqlite3_column_text(stmt, 5) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) : "";
+        history.endSnapshot = sqlite3_column_text(stmt, 6) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)) : "";
+        if (sqlite3_column_type(stmt, 7) != SQLITE_NULL)
+            history.speed = static_cast<float>(sqlite3_column_double(stmt, 7));
+        else
+            history.speed = std::nullopt;
+
+        // 이벤트 타입별로 필요 없는 필드는 정리
+        if (history.eventType == 1) {
+            // 과속: speed만 사용
+            history.startSnapshot = "";
+            history.endSnapshot = "";
+        } else if (history.eventType == 0) {
+            // 불법주정차: start/end snapshot만 사용
+            history.speed = std::nullopt;
+        } else {
+            // 보행자 등 기타 이벤트: 모두 미사용
+            history.startSnapshot = "";
+            history.endSnapshot = "";
+            history.speed = std::nullopt;
+        }
 
         histories.push_back(history);
     }
@@ -129,7 +182,7 @@ std::vector<History> HistoryRepository::getHistoriesByDateRange(
     return histories;
 }
 
-// 이벤트 유형 + 날짜 범위 필터 + 페이지네이션
+
 std::vector<History> HistoryRepository::getHistoriesByEventTypeAndDateRange(
     int eventType,
     const std::string& startDate,
@@ -139,7 +192,7 @@ std::vector<History> HistoryRepository::getHistoriesByEventTypeAndDateRange(
 ) {
     std::vector<History> histories;
     const char* sql =
-        "SELECT id, date, image_path, plate_number, event_type "
+        "SELECT id, date, image_path, plate_number, event_type, start_snapshot, end_snapshot, speed "
         "FROM history "
         "WHERE event_type = ? AND date BETWEEN ? AND ? "
         "ORDER BY date DESC LIMIT ? OFFSET ?;";
@@ -163,6 +216,24 @@ std::vector<History> HistoryRepository::getHistoriesByEventTypeAndDateRange(
         history.imagePath = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
         history.plateNumber = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
         history.eventType = sqlite3_column_int(stmt, 4);
+        history.startSnapshot = sqlite3_column_text(stmt, 5) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)) : "";
+        history.endSnapshot = sqlite3_column_text(stmt, 6) ? reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)) : "";
+        if (sqlite3_column_type(stmt, 7) != SQLITE_NULL)
+            history.speed = static_cast<float>(sqlite3_column_double(stmt, 7));
+        else
+            history.speed = std::nullopt;
+
+        // 이벤트 타입별로 필요 없는 필드는 정리
+        if (history.eventType == 1) {
+            history.startSnapshot = "";
+            history.endSnapshot = "";
+        } else if (history.eventType == 0) {
+            history.speed = std::nullopt;
+        } else {
+            history.startSnapshot = "";
+            history.endSnapshot = "";
+            history.speed = std::nullopt;
+        }
 
         histories.push_back(history);
     }
@@ -170,6 +241,7 @@ std::vector<History> HistoryRepository::getHistoriesByEventTypeAndDateRange(
     sqlite3_finalize(stmt);
     return histories;
 }
+
 
 // 히스토리 삭제
 bool HistoryRepository::deleteHistory(int id) {
