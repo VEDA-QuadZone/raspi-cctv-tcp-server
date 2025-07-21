@@ -19,7 +19,10 @@ void DBInitializer::init(DBManager& db) {
             date DATETIME NOT NULL,
             image_path TEXT NOT NULL,
             plate_number TEXT NOT NULL,
-            event_type INTEGER NOT NULL
+            event_type INTEGER NOT NULL,
+            start_snapshot TEXT,
+            end_snapshot TEXT,
+            speed FLOAT
         );
     )";
 
