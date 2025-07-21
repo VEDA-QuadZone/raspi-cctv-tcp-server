@@ -1,3 +1,4 @@
+#include <signal.h> // ← 꼭 필요!
 #include "../../include/server/TcpServer.hpp"
 #include "../../include/server/CommandHandler.hpp"
 #include "../../include/server/ImageHandler.hpp"
@@ -10,6 +11,9 @@
 CommandHandler* commandHandler = nullptr;
 
 int main() {
+    // 여기에 추가! (가장 상단에)
+    signal(SIGPIPE, SIG_IGN);
+    
     // 1. DB 연결
     DBManager db("server_data.db");  // 파일로 저장할 경우
     if (!db.open()) {

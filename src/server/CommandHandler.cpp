@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <optional>
 #include <filesystem> // 파일 경로 처리를 위해
-
+#include <fstream>
 CommandHandler::CommandHandler(sqlite3* db)
     : userRepo(db), historyRepo(db) {}
 
@@ -34,7 +34,12 @@ std::string CommandHandler::handle(const std::string& commandStr) {
         return handleGetHistoryByEventTypeAndDateRange(payload);
     } else if (command == "GET_IMAGE") {
         return handleGetImage(payload);
-    } else {
+    }
+    else if (command == "CHANGE_FRAME") {
+    return handleChangeFrame(payload);
+}
+ 
+    else {
         return R"({"status": "error", "code": 400, "message": "Unknown command"})";
     }
 }
@@ -408,4 +413,47 @@ std::string CommandHandler::handleGetImage(const std::string& payload) {
     };
 
     return response.dump();
+}
+
+std::string CommandHandler::handleChangeFrame(const std::string& payload) {
+    std::istringstream iss(payload);
+    int menu_type;
+    int bool_val;
+
+    iss >> menu_type >> bool_val;
+
+    if (iss.fail() || (menu_type != 0 && menu_type != 1) || (bool_val != 0 && bool_val != 1)) {
+        return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
+    }
+
+    const std::string config_path = "/dev/shm/overlay_config";
+
+    // 파일 읽기
+    std::ifstream ifs(config_path);
+    if (!ifs.is_open()) {
+        return R"({"status": "error", "code": 500, "message": "Failed to open overlay_config"})";
+    }
+    nlohmann::json config;
+    try {
+        ifs >> config;
+    } catch (...) {
+        return R"({"status": "error", "code": 500, "message": "Failed to parse overlay_config"})";
+    }
+
+    // menu_type에 따라 필드 선택
+    if (menu_type == 0) {
+        config["show_bbox"] = static_cast<bool>(bool_val);
+    } else if (menu_type == 1) {
+        config["show_timestamp"] = static_cast<bool>(bool_val);
+    }
+
+    // 다시 저장
+    std::ofstream ofs(config_path);
+    if (!ofs.is_open()) {
+        return R"({"status": "error", "code": 500, "message": "Failed to write overlay_config"})";
+    }
+    ofs << config.dump();
+    ofs.close();
+
+    return R"({"status": "success", "code": 200, "message": "Overlay config updated"})";
 }

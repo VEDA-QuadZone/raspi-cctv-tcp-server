@@ -25,7 +25,8 @@ private:
     std::set<int> client_fds;
 
     void acceptClient();
-    void handleClient(int client_fd);
+    //void handleClient(int client_fd);
+    bool handleClient(int client_fd);
     void removeClient(int client_fd);
     
     ImageHandler* imageHandler = nullptr;

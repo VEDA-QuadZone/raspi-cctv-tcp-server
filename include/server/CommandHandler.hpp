@@ -33,6 +33,7 @@ private:
     std::string handleGetImage(const std::string& payload); // 이미지 경로 요청
 
     // 유틸 함수: JSON 파싱, 응답 생성 등
+    std::string handleChangeFrame(const std::string& payload);
 };
 
 #endif // COMMAND_HANDLER_HPP

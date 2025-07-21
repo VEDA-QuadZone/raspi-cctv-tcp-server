@@ -42,11 +42,20 @@ std::string ImageHandler::handleImageUpload(int client_fd, const std::string& fi
     std::vector<char> buffer(4096);
 
     while (totalBytesRead < filesize) {
-        ssize_t bytesRead = read(client_fd, buffer.data(), std::min(buffer.size(), filesize - totalBytesRead));
+        ssize_t bytesRead = read(client_fd,
+                                buffer.data(),
+                                 std::min(buffer.size(),
+                                          filesize - totalBytesRead));
+
         if (bytesRead == 0) {
-            ofs.close();
-            std::filesystem::remove(fullPath);
-            return R"({"status": "error", "code": 499, "message": "Client closed connection"})";
+            // EOF: 전부 다 받았으면 정상 탈출, 아니면 중간 종료 에러
+            if (totalBytesRead >= filesize) {
+                break;
+            } else {
+                ofs.close();
+                std::filesystem::remove(fullPath);
+                return R"({"status": "error", "code": 499, "message": "Client closed connection"})";
+            }
         }
         if (bytesRead < 0) {
             perror("read");
