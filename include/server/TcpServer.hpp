@@ -2,13 +2,10 @@
 #define TCPSERVER_HPP
 
 #include <netinet/in.h>
-#include <vector>
-#include <set>
 #include <string>
 #include <map>
-#include <fstream>
-#include <sys/select.h>
 #include <unordered_map>
+#include <fstream>
 
 class ImageHandler; // 선언만!
 
@@ -19,35 +16,19 @@ struct UploadSession {
     std::ofstream ofs;
 };
 
-// 전역 변수를 꼭 전역으로 둘 필요는 없지만, 필요하다면 extern 선언!
-// extern std::unordered_map<int, UploadSession> uploadSessions;
-
 class TcpServer {
 public:
     TcpServer();
     ~TcpServer();
 
     void setupSocket(int port);
-    void start();
-    void setImageHandler(ImageHandler* handler);
+    void start();                      // 클라이언트 접속 루프 (각 접속마다 pthread 생성)
+    void setImageHandler(ImageHandler*);
+    bool handleClient(int client_fd);  // pthread에서 실행될 클라이언트 처리 함수
 
 private:
     int server_fd;
-    int fd_max;
-    fd_set master_fds;
-
-    std::set<int> client_fds;
-
-    void acceptClient();
-    bool handleClient(int client_fd); // 파일 업로드 등등 확장 가능
-
-    void removeClient(int client_fd);
-
-    // 멤버 변수: ImageHandler* (의존성 주입)
     ImageHandler* imageHandler = nullptr;
-
-    // 업로드 세션 등 필요하면 멤버로 둘 수도 있음 (or 전역)
-    // std::unordered_map<int, UploadSession> uploadSessions;
 };
 
 #endif // TCPSERVER_HPP

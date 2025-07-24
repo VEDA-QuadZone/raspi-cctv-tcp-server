@@ -23,9 +23,9 @@ std::string ImageHandler::handleImageUpload(int client_fd, const std::string& fi
     }
 
     // 3. 고유한 파일명 생성 (타임스탬프 + 원래 이름)
-    auto timestamp = std::chrono::system_clock::now().time_since_epoch().count();
-    std::string safeFilename = std::to_string(timestamp) + "_" + filename;
-    std::string fullPath = "images/" + safeFilename;
+    //auto timestamp = std::chrono::system_clock::now().time_since_epoch().count();
+    //std::string safeFilename = std::to_string(timestamp) + "_" + filename;
+    std::string fullPath = "images/" + filename;
 
     // 4. 파일 이미 존재하는 경우 방지 (이론상 불가능하지만 안전망)
     if (std::filesystem::exists(fullPath)) {
