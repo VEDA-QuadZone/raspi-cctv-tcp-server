@@ -1,40 +1,39 @@
+// =====================
+// include/server/CommandHandler.hpp
+// =====================
 #ifndef COMMAND_HANDLER_HPP
 #define COMMAND_HANDLER_HPP
 
 #include <string>
 #include <sqlite3.h>
+#include <openssl/ssl.h>
 #include "../db/repository/UserRepository.hpp"
 #include "../db/repository/HistoryRepository.hpp"
+#include "./ImageHandler.hpp"
 
 class CommandHandler {
 public:
-    CommandHandler(sqlite3* db);
+    CommandHandler(sqlite3* db, ImageHandler* ih);
 
-    // 요청 처리 함수: 클라이언트가 보낸 command string을 받아서 응답 string 리턴
     std::string handle(const std::string& commandStr);
+    void handleGetImage(SSL* ssl, const std::string& imagePath);
 
 private:
     UserRepository userRepo;
     HistoryRepository historyRepo;
+    ImageHandler* imageHandler_;
 
-    // 사용자 관련 명령어
     std::string handleRegister(const std::string& payload);
     std::string handleLogin(const std::string& payload);
     std::string handleResetPassword(const std::string& payload);
-
-    // 히스토리 관련 명령어
     std::string handleGetHistory(const std::string& payload);
-    std::string handleAddHistory(const std::string& payload); 
+    std::string handleAddHistory(const std::string& payload);
     std::string handleGetHistoryByEventType(const std::string& payload);
     std::string handleGetHistoryByDateRange(const std::string& payload);
     std::string handleGetHistoryByEventTypeAndDateRange(const std::string& payload);
-
-    // 이미지 관련 명령어
-    std::string handleGetImage(const std::string& payload); // 이미지 경로 요청
-
-    // 유틸 함수: JSON 파싱, 응답 생성 등
     std::string handleChangeFrame(const std::string& payload);
     std::string handleGetFrame(const std::string& payload);
+    std::string handleGetLog(const std::string& payload);
 };
 
 #endif // COMMAND_HANDLER_HPP

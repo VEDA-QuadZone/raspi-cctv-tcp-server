@@ -7,49 +7,34 @@
 #include <filesystem> // 파일 경로 처리를 위해
 #include <fstream>
 
-CommandHandler::CommandHandler(sqlite3* db)
-    : userRepo(db), historyRepo(db) {}
+CommandHandler::CommandHandler(sqlite3* db, ImageHandler* ih)
+    : userRepo(db), historyRepo(db), imageHandler_(ih) {}
 
 std::string CommandHandler::handle(const std::string& commandStr) {
     std::istringstream iss(commandStr);
     std::string command;
     std::getline(iss, command, ' ');
-
-    //command.erase(std::remove_if(command.begin(), command.end(), ::isspace), command.end());
-    //std::cout << "[DEBUG] command=[" << command << "]" << std::endl;
     command.erase(0, command.find_first_not_of(" \t\r\n"));
     command.erase(command.find_last_not_of(" \t\r\n") + 1);
+
     std::string payload;
     std::getline(iss, payload);
-    
-    if (command == "REGISTER") {
-        return handleRegister(payload);
-    } else if (command == "LOGIN") {
-        return handleLogin(payload);
-    } else if (command == "RESET_PASSWORD") {
-        return handleResetPassword(payload);
-    } else if (command == "GET_HISTORY") {
-        return handleGetHistory(payload);
-    } else if (command == "ADD_HISTORY") {
-        return handleAddHistory(payload);
-    } else if (command == "GET_HISTORY_BY_EVENT_TYPE") {
-        return handleGetHistoryByEventType(payload);
-    } else if (command == "GET_HISTORY_BY_DATE_RANGE") {
-        return handleGetHistoryByDateRange(payload);
-    } else if (command == "GET_HISTORY_BY_EVENT_TYPE_AND_DATE_RANGE") {
-        return handleGetHistoryByEventTypeAndDateRange(payload);
-    } else if (command == "GET_IMAGE") {
-        return handleGetImage(payload);
-    }
-    else if (command == "CHANGE_FRAME") {
-        return handleChangeFrame(payload);
-    }
-    else if (command == "GET_FRAME") {
-        return handleGetFrame(payload);  
-    }
-    else {
-        return R"({"status": "error", "code": 400, "message": "Unknown commandD"})";
-    }
+
+    if (command == "REGISTER") return handleRegister(payload);
+    else if (command == "LOGIN") return handleLogin(payload);
+    else if (command == "RESET_PASSWORD") return handleResetPassword(payload);
+    else if (command == "GET_HISTORY") return handleGetHistory(payload);
+    else if (command == "ADD_HISTORY") return handleAddHistory(payload);
+    else if (command == "GET_HISTORY_BY_EVENT_TYPE") return handleGetHistoryByEventType(payload);
+    else if (command == "GET_HISTORY_BY_DATE_RANGE") return handleGetHistoryByDateRange(payload);
+    else if (command == "GET_HISTORY_BY_EVENT_TYPE_AND_DATE_RANGE") return handleGetHistoryByEventTypeAndDateRange(payload);
+    else if (command == "CHANGE_FRAME") return handleChangeFrame(payload);
+    else if (command == "GET_FRAME") return handleGetFrame(payload);
+    else if (command == "GET_LOG") return handleGetLog(payload);
+    else return R"({"status": "error", "code": 400, "message": "Unknown command"})";
+}
+void CommandHandler::handleGetImage(SSL* ssl, const std::string& imagePath) {
+    imageHandler_->handleGetImage(ssl, imagePath);
 }
 
 std::string CommandHandler::handleRegister(const std::string& payload) {
@@ -478,39 +463,12 @@ std::string CommandHandler::handleGetHistoryByEventTypeAndDateRange(const std::s
 }
 
 
-
-
-
-std::string CommandHandler::handleGetImage(const std::string& payload) {
-    std::string imagePath = payload;
-
-    if (imagePath.empty()) {
-        return R"({"status": "error", "code": 400, "message": "Image path is missing"})";
-    }
-
-    // 실제 파일이 존재하는지 확인
-    if (!std::filesystem::exists(imagePath)) {
-        return R"({"status": "error", "code": 404, "message": "Image not found"})";
-    }
-
-    nlohmann::json response = {
-        {"status", "success"},
-        {"code", 200},
-        {"message", "Image path resolved successfully"},
-        {"image_path", imagePath}
-    };
-
-    return response.dump();
-}
-
 std::string CommandHandler::handleChangeFrame(const std::string& payload) {
     std::istringstream iss(payload);
     int menu_type;
-    int bool_val;
 
-    iss >> menu_type >> bool_val;
-
-    if (iss.fail() || (menu_type != 0 && menu_type != 1) || (bool_val != 0 && bool_val != 1)) {
+    iss >> menu_type;
+    if (iss.fail()) {
         return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
     }
 
@@ -528,11 +486,40 @@ std::string CommandHandler::handleChangeFrame(const std::string& payload) {
         return R"({"status": "error", "code": 500, "message": "Failed to parse overlay_config"})";
     }
 
-    // menu_type에 따라 필드 선택
-    if (menu_type == 0) {
-        config["show_bbox"] = static_cast<bool>(bool_val);
-    } else if (menu_type == 1) {
-        config["show_timestamp"] = static_cast<bool>(bool_val);
+    if (menu_type == 0 || menu_type == 1) {
+        int bool_val;
+        iss >> bool_val;
+        if (iss.fail() || (bool_val != 0 && bool_val != 1)) {
+            return R"({"status": "error", "code": 400, "message": "Invalid boolean value"})";
+        }
+        if (menu_type == 0) {
+            config["show_bbox"] = static_cast<bool>(bool_val);
+        } else if (menu_type == 1) {
+            config["show_timestamp"] = static_cast<bool>(bool_val);
+        }
+    } else if (menu_type == 2) {
+        std::string mode_val;
+        iss >> mode_val;
+
+        if (iss.fail() || (mode_val != "original" && mode_val != "sharp" &&
+                        mode_val != "day" && mode_val != "night")) {
+            return R"json({"status": "error", "code": 400, "message": "Invalid mode value"})json";
+        }
+
+        config["mode"] = mode_val;
+
+        if (mode_val == "sharp") {
+            int sharpness_val;
+            iss >> sharpness_val;
+            if (iss.fail() || sharpness_val < 0 || sharpness_val > 100) {
+                return R"json({"status": "error", "code": 400, "message": "Invalid sharpness level (0~100)"})json";
+            }
+            config["sharpness_level"] = sharpness_val;
+        } else {
+            config.erase("sharpness_level");
+        }
+    } else {
+        return R"({"status": "error", "code": 400, "message": "Unknown menu_type"})";
     }
 
     // 다시 저장
@@ -545,6 +532,8 @@ std::string CommandHandler::handleChangeFrame(const std::string& payload) {
 
     return R"({"status": "success", "code": 200, "message": "Overlay config updated"})";
 }
+
+
 
 std::string CommandHandler::handleGetFrame(const std::string& payload) {
     const std::string config_path = "/dev/shm/overlay_config";
@@ -565,6 +554,30 @@ std::string CommandHandler::handleGetFrame(const std::string& payload) {
         {"status", "success"},
         {"code", 200},
         {"message", "Overlay config retrieved"},
+        {"data", config}
+    };
+    return response.dump();
+}
+
+std::string CommandHandler::handleGetLog(const std::string& payload) {
+    const std::string config_path = "/dev/shm/shm_status";
+    nlohmann::json config;
+
+    // 파일 읽기
+    std::ifstream ifs(config_path);
+    if (!ifs.is_open()) {
+        return R"({"status": "error", "code": 500, "message": "Failed to open shm_status"})";
+    }
+    try {
+        ifs >> config;
+    } catch (...) {
+        return R"({"status": "error", "code": 500, "message": "Failed to parse shm_status"})";
+    }
+
+    nlohmann::json response = {
+        {"status", "success"},
+        {"code", 200},
+        {"message", "shm_status retrieved"},
         {"data", config}
     };
     return response.dump();
