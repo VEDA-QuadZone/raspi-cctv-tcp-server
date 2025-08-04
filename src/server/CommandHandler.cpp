@@ -5,38 +5,36 @@
 #include <iomanip>
 #include <optional>
 #include <filesystem> // 파일 경로 처리를 위해
+#include <fstream>
 
-CommandHandler::CommandHandler(sqlite3* db)
-    : userRepo(db), historyRepo(db) {}
+CommandHandler::CommandHandler(sqlite3* db, ImageHandler* ih)
+    : userRepo(db), historyRepo(db), imageHandler_(ih) {}
 
 std::string CommandHandler::handle(const std::string& commandStr) {
     std::istringstream iss(commandStr);
     std::string command;
     std::getline(iss, command, ' ');
+    command.erase(0, command.find_first_not_of(" \t\r\n"));
+    command.erase(command.find_last_not_of(" \t\r\n") + 1);
+
     std::string payload;
     std::getline(iss, payload);
 
-    if (command == "REGISTER") {
-        return handleRegister(payload);
-    } else if (command == "LOGIN") {
-        return handleLogin(payload);
-    } else if (command == "RESET_PASSWORD") {
-        return handleResetPassword(payload);
-    } else if (command == "GET_HISTORY") {
-        return handleGetHistory(payload);
-    } else if (command == "ADD_HISTORY") {
-        return handleAddHistory(payload);
-    } else if (command == "GET_HISTORY_BY_EVENT_TYPE") {
-        return handleGetHistoryByEventType(payload);
-    } else if (command == "GET_HISTORY_BY_DATE_RANGE") {
-        return handleGetHistoryByDateRange(payload);
-    } else if (command == "GET_HISTORY_BY_EVENT_TYPE_AND_DATE_RANGE") {
-        return handleGetHistoryByEventTypeAndDateRange(payload);
-    } else if (command == "GET_IMAGE") {
-        return handleGetImage(payload);
-    } else {
-        return R"({"status": "error", "code": 400, "message": "Unknown command"})";
-    }
+    if (command == "REGISTER") return handleRegister(payload);
+    else if (command == "LOGIN") return handleLogin(payload);
+    else if (command == "RESET_PASSWORD") return handleResetPassword(payload);
+    else if (command == "GET_HISTORY") return handleGetHistory(payload);
+    else if (command == "ADD_HISTORY") return handleAddHistory(payload);
+    else if (command == "GET_HISTORY_BY_EVENT_TYPE") return handleGetHistoryByEventType(payload);
+    else if (command == "GET_HISTORY_BY_DATE_RANGE") return handleGetHistoryByDateRange(payload);
+    else if (command == "GET_HISTORY_BY_EVENT_TYPE_AND_DATE_RANGE") return handleGetHistoryByEventTypeAndDateRange(payload);
+    else if (command == "CHANGE_FRAME") return handleChangeFrame(payload);
+    else if (command == "GET_FRAME") return handleGetFrame(payload);
+    else if (command == "GET_LOG") return handleGetLog(payload);
+    else return R"({"status": "error", "code": 400, "message": "Unknown command"})";
+}
+void CommandHandler::handleGetImage(SSL* ssl, const std::string& imagePath) {
+    imageHandler_->handleGetImage(ssl, imagePath);
 }
 
 std::string CommandHandler::handleRegister(const std::string& payload) {
@@ -159,36 +157,50 @@ std::string CommandHandler::handleGetHistory(const std::string& payload) {
 
     iss >> email >> limit >> offset;
 
-    if (email.empty() || limit <= 0 || offset < 0) { // 이메일이 비어있거나 limit, offset이 유효하지 않은 경우
+    if (email.empty() || limit <= 0 || offset < 0) {
         return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
     }
 
     auto userOpt = userRepo.getUserByEmail(email);
-    if (!userOpt.has_value()) { // 사용자가 존재하지 않는 경우
+    if (!userOpt.has_value()) {
         return R"({"status": "error", "code": 404, "message": "User not found"})";
     }
 
-    // 사용자의 히스토리 가져오기
     auto history = historyRepo.getHistories(limit, offset);
 
-    if (history.empty()) { // 히스토리가 없는 경우
-        nlohmann::json response = {
-            {"status", "success"},
-            {"code", 200},
-            {"message", "No history found"},
-            {"data", nlohmann::json::array()}
-        };
-        return response.dump();
-    }
-
-    nlohmann::json data = nlohmann::json::array(); // JSON 배열 생성
+    nlohmann::json data = nlohmann::json::array();
     for (const auto& h : history) {
+        std::string start_snapshot, end_snapshot;
+        nlohmann::json speed_json;
+
+        if (h.eventType == 0) { // 불법주정차
+            start_snapshot = h.startSnapshot;
+            end_snapshot = h.endSnapshot;
+            speed_json = nullptr;
+        } else if (h.eventType == 1) { // 과속
+    start_snapshot = "";
+    end_snapshot = "";
+    if (h.speed.has_value()) {
+        float rounded = std::round(h.speed.value() * 100) / 100.0f;
+        speed_json = rounded;
+    } else {
+        speed_json = nullptr;
+    }
+} else { // 어린이 감지 등 기타
+            start_snapshot = "";
+            end_snapshot = "";
+            speed_json = nullptr;
+        }
+
         data.push_back({
             {"id", h.id},
             {"date", h.date},
             {"image_path", h.imagePath},
             {"plate_number", h.plateNumber},
-            {"event_type", h.eventType}
+            {"event_type", h.eventType},
+            {"start_snapshot", start_snapshot},
+            {"end_snapshot", end_snapshot},
+            {"speed", speed_json}
         });
     }
 
@@ -201,12 +213,14 @@ std::string CommandHandler::handleGetHistory(const std::string& payload) {
     return response.dump();
 }
 
+
 std::string CommandHandler::handleAddHistory(const std::string& payload) {
     std::istringstream iss(payload);
-    std::string rawDate, imagePath, plateNumber;
+    std::string rawDate, imagePath, plateNumber, startSnapshot, endSnapshot;
     int eventType;
+    float speed = -1;
+    iss >> rawDate >> imagePath >> plateNumber >> eventType >> startSnapshot >> endSnapshot >> speed;
 
-    iss >> rawDate >> imagePath >> plateNumber >> eventType;
 
     if (rawDate.empty() || imagePath.empty() || plateNumber.empty() || eventType < 0 || eventType > 2) {
         return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
@@ -220,6 +234,12 @@ std::string CommandHandler::handleAddHistory(const std::string& payload) {
     newHistory.imagePath = imagePath;
     newHistory.plateNumber = plateNumber;
     newHistory.eventType = eventType;
+    newHistory.startSnapshot = startSnapshot;
+    newHistory.endSnapshot = endSnapshot;
+    if (eventType == 1 && speed >= 0) // 속도위반일 때만
+        newHistory.speed = speed;
+    else
+        newHistory.speed = std::nullopt;
 
     if (!historyRepo.createHistory(newHistory)) {
         return R"({"status": "error", "code": 500, "message": "Failed to create history"})";
@@ -234,12 +254,12 @@ std::string CommandHandler::handleGetHistoryByEventType(const std::string& paylo
     std::istringstream iss(payload);
     std::string email;
     int eventType = 0;
-    int limit = 10; // 기본값
-    int offset = 0; // 기본값
+    int limit = 10;
+    int offset = 0;
 
     iss >> email >> eventType >> limit >> offset;
 
-    if (email.empty() || eventType < 0 || limit <= 0 || offset < 0) { 
+    if (email.empty() || eventType < 0 || limit <= 0 || offset < 0) {
         return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
     }
 
@@ -248,27 +268,44 @@ std::string CommandHandler::handleGetHistoryByEventType(const std::string& paylo
         return R"({"status": "error", "code": 404, "message": "User not found"})";
     }
 
-    // 이벤트 타입에 따른 히스토리 가져오기
     auto history = historyRepo.getHistoriesByEventType(eventType, limit, offset);
-    if (history.empty()) { // 히스토리가 없는 경우
-        nlohmann::json response = {
-            {"status", "success"},
-            {"code", 200},
-            {"message", "No history found"},
-            {"data", nlohmann::json::array()}
-        };
-        return response.dump();
-    }
 
-    nlohmann::json data = nlohmann::json::array(); // JSON 배열 생성
+    nlohmann::json data = nlohmann::json::array();
     for (const auto& h : history) {
-        data.push_back({
-            {"id", h.id},
-            {"date", h.date},
-            {"image_path", h.imagePath},
-            {"plate_number", h.plateNumber},
-            {"event_type", h.eventType}
-        });
+        if (h.eventType == 0) { // 불법주정차
+            data.push_back({
+                {"id", h.id},
+                {"date", h.date},
+                {"image_path", h.imagePath},
+                {"plate_number", h.plateNumber},
+                {"event_type", h.eventType},
+                {"start_snapshot", h.startSnapshot},
+                {"end_snapshot", h.endSnapshot}
+                // speed 없음
+            });
+        } else if (h.eventType == 1) { // 과속
+            nlohmann::json obj = {
+                {"id", h.id},
+                {"date", h.date},
+                {"image_path", h.imagePath},
+                {"plate_number", h.plateNumber},
+                {"event_type", h.eventType}
+                // start_snapshot, end_snapshot 없음
+            };
+            if (h.speed.has_value()) {
+                float rounded = std::round(h.speed.value() * 100) / 100.0f;
+                obj["speed"] = rounded;
+            }
+            data.push_back(obj);
+        } else if (h.eventType == 2) { // 어린이 감지
+            data.push_back({
+                {"id", h.id},
+                {"date", h.date},
+                {"image_path", h.imagePath},
+                {"event_type", h.eventType}
+                // speed, start_snapshot, end_snapshot, plate_number 없음
+            });
+        }
     }
 
     nlohmann::json response = {
@@ -279,6 +316,10 @@ std::string CommandHandler::handleGetHistoryByEventType(const std::string& paylo
     };
     return response.dump();
 }
+
+
+
+
 
 std::string CommandHandler::handleGetHistoryByDateRange(const std::string& payload) {
     std::istringstream iss(payload);
@@ -302,24 +343,39 @@ std::string CommandHandler::handleGetHistoryByDateRange(const std::string& paylo
 
     auto histories = historyRepo.getHistoriesByDateRange(startDate, endDate, limit, offset);
 
-    if (histories.empty()) {
-        nlohmann::json response = {
-            {"status", "success"},
-            {"code", 200},
-            {"message", "No history found"},
-            {"data", nlohmann::json::array()}
-        };
-        return response.dump();
-    }
-
     nlohmann::json data = nlohmann::json::array();
     for (const auto& h : histories) {
+        std::string start_snapshot, end_snapshot;
+        nlohmann::json speed_json;
+
+        if (h.eventType == 0) { // 불법주정차
+            start_snapshot = h.startSnapshot;
+            end_snapshot = h.endSnapshot;
+            speed_json = nullptr;
+        } else if (h.eventType == 1) { // 과속
+    start_snapshot = "";
+    end_snapshot = "";
+    if (h.speed.has_value()) {
+        float rounded = std::round(h.speed.value() * 100) / 100.0f;
+        speed_json = rounded;
+    } else {
+        speed_json = nullptr;
+    }
+} else { // 기타(어린이감지)
+            start_snapshot = "";
+            end_snapshot = "";
+            speed_json = nullptr;
+        }
+
         data.push_back({
             {"id", h.id},
             {"date", h.date},
             {"image_path", h.imagePath},
             {"plate_number", h.plateNumber},
-            {"event_type", h.eventType}
+            {"event_type", h.eventType},
+            {"start_snapshot", start_snapshot},
+            {"end_snapshot", end_snapshot},
+            {"speed", speed_json}
         });
     }
 
@@ -332,6 +388,7 @@ std::string CommandHandler::handleGetHistoryByDateRange(const std::string& paylo
 
     return response.dump();
 }
+
 
 
 std::string CommandHandler::handleGetHistoryByEventTypeAndDateRange(const std::string& payload) {
@@ -357,25 +414,42 @@ std::string CommandHandler::handleGetHistoryByEventTypeAndDateRange(const std::s
 
     auto histories = historyRepo.getHistoriesByEventTypeAndDateRange(eventType, startDate, endDate, limit, offset);
 
-    if (histories.empty()) {
-        nlohmann::json response = {
-            {"status", "success"},
-            {"code", 200},
-            {"message", "No history found"},
-            {"data", nlohmann::json::array()}
-        };
-        return response.dump();
-    }
-
     nlohmann::json data = nlohmann::json::array();
     for (const auto& h : histories) {
-        data.push_back({
-            {"id", h.id},
-            {"date", h.date},
-            {"image_path", h.imagePath},
-            {"plate_number", h.plateNumber},
-            {"event_type", h.eventType}
-        });
+        if (h.eventType == 0) { // 불법주정차
+            data.push_back({
+                {"id", h.id},
+                {"date", h.date},
+                {"image_path", h.imagePath},
+                {"plate_number", h.plateNumber},
+                {"event_type", h.eventType},
+                {"start_snapshot", h.startSnapshot},
+                {"end_snapshot", h.endSnapshot}
+                // speed 없음
+            });
+        } else if (h.eventType == 1) { // 과속
+            nlohmann::json obj = {
+                {"id", h.id},
+                {"date", h.date},
+                {"image_path", h.imagePath},
+                {"plate_number", h.plateNumber},
+                {"event_type", h.eventType}
+                // start_snapshot, end_snapshot 없음
+            };
+            if (h.speed.has_value()) {
+                float rounded = std::round(h.speed.value() * 100) / 100.0f;
+                obj["speed"] = rounded;
+            }
+            data.push_back(obj);
+        } else if (h.eventType == 2) { // 어린이 감지
+            data.push_back({
+                {"id", h.id},
+                {"date", h.date},
+                {"image_path", h.imagePath},
+                {"event_type", h.eventType}
+                // plate_number, speed, start_snapshot, end_snapshot 없음
+            });
+        }
     }
 
     nlohmann::json response = {
@@ -388,24 +462,123 @@ std::string CommandHandler::handleGetHistoryByEventTypeAndDateRange(const std::s
     return response.dump();
 }
 
-std::string CommandHandler::handleGetImage(const std::string& payload) {
-    std::string imagePath = payload;
 
-    if (imagePath.empty()) {
-        return R"({"status": "error", "code": 400, "message": "Image path is missing"})";
+std::string CommandHandler::handleChangeFrame(const std::string& payload) {
+    std::istringstream iss(payload);
+    int menu_type;
+
+    iss >> menu_type;
+    if (iss.fail()) {
+        return R"({"status": "error", "code": 400, "message": "Invalid input format"})";
     }
 
-    // 실제 파일이 존재하는지 확인
-    if (!std::filesystem::exists(imagePath)) {
-        return R"({"status": "error", "code": 404, "message": "Image not found"})";
+    const std::string config_path = "/dev/shm/overlay_config";
+
+    // 파일 읽기
+    std::ifstream ifs(config_path);
+    if (!ifs.is_open()) {
+        return R"({"status": "error", "code": 500, "message": "Failed to open overlay_config"})";
+    }
+    nlohmann::json config;
+    try {
+        ifs >> config;
+    } catch (...) {
+        return R"({"status": "error", "code": 500, "message": "Failed to parse overlay_config"})";
+    }
+
+    if (menu_type == 0 || menu_type == 1) {
+        int bool_val;
+        iss >> bool_val;
+        if (iss.fail() || (bool_val != 0 && bool_val != 1)) {
+            return R"({"status": "error", "code": 400, "message": "Invalid boolean value"})";
+        }
+        if (menu_type == 0) {
+            config["show_bbox"] = static_cast<bool>(bool_val);
+        } else if (menu_type == 1) {
+            config["show_timestamp"] = static_cast<bool>(bool_val);
+        }
+    } else if (menu_type == 2) {
+        std::string mode_val;
+        iss >> mode_val;
+
+        if (iss.fail() || (mode_val != "original" && mode_val != "sharp" &&
+                        mode_val != "day" && mode_val != "night")) {
+            return R"json({"status": "error", "code": 400, "message": "Invalid mode value"})json";
+        }
+
+        config["mode"] = mode_val;
+
+        if (mode_val == "sharp") {
+            int sharpness_val;
+            iss >> sharpness_val;
+            if (iss.fail() || sharpness_val < 0 || sharpness_val > 100) {
+                return R"json({"status": "error", "code": 400, "message": "Invalid sharpness level (0~100)"})json";
+            }
+            config["sharpness_level"] = sharpness_val;
+        } else {
+            config.erase("sharpness_level");
+        }
+    } else {
+        return R"({"status": "error", "code": 400, "message": "Unknown menu_type"})";
+    }
+
+    // 다시 저장
+    std::ofstream ofs(config_path);
+    if (!ofs.is_open()) {
+        return R"({"status": "error", "code": 500, "message": "Failed to write overlay_config"})";
+    }
+    ofs << config.dump();
+    ofs.close();
+
+    return R"({"status": "success", "code": 200, "message": "Overlay config updated"})";
+}
+
+
+
+std::string CommandHandler::handleGetFrame(const std::string& payload) {
+    const std::string config_path = "/dev/shm/overlay_config";
+    nlohmann::json config;
+
+    // 파일 읽기
+    std::ifstream ifs(config_path);
+    if (!ifs.is_open()) {
+        return R"({"status": "error", "code": 500, "message": "Failed to open overlay_config"})";
+    }
+    try {
+        ifs >> config;
+    } catch (...) {
+        return R"({"status": "error", "code": 500, "message": "Failed to parse overlay_config"})";
     }
 
     nlohmann::json response = {
         {"status", "success"},
         {"code", 200},
-        {"message", "Image path resolved successfully"},
-        {"image_path", imagePath}
+        {"message", "Overlay config retrieved"},
+        {"data", config}
     };
+    return response.dump();
+}
 
+std::string CommandHandler::handleGetLog(const std::string& payload) {
+    const std::string config_path = "/dev/shm/shm_status";
+    nlohmann::json config;
+
+    // 파일 읽기
+    std::ifstream ifs(config_path);
+    if (!ifs.is_open()) {
+        return R"({"status": "error", "code": 500, "message": "Failed to open shm_status"})";
+    }
+    try {
+        ifs >> config;
+    } catch (...) {
+        return R"({"status": "error", "code": 500, "message": "Failed to parse shm_status"})";
+    }
+
+    nlohmann::json response = {
+        {"status", "success"},
+        {"code", 200},
+        {"message", "shm_status retrieved"},
+        {"data", config}
+    };
     return response.dump();
 }
